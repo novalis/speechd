@@ -70,6 +70,7 @@ static int isanum(char *str);
 static char *get_reply(SPDConnection * connection);
 static int get_err_code(char *reply);
 static char *get_param_str(char *reply, int num, int *err);
+static char *get_param_str_and_advance(char **reply, int *err);
 static int get_param_int(char *reply, int num, int *err);
 static int ret_ok(char *reply);
 static void SPD_DBG(char *format, ...);
@@ -1541,8 +1542,9 @@ char **spd_execute_command_with_list_reply(SPDConnection * connection,
 
 	result = malloc((max_items + 1) * sizeof(char *));
 
+	char *cur = reply;
 	for (i = 0;; i++) {
-		line = get_param_str(reply, i + 1, &err);
+		line = get_param_str_and_advance(&cur, &err);
 		if ((err) || (line == NULL))
 			break;
 		result[i] = line;
@@ -1978,6 +1980,45 @@ static int ret_ok(char *reply)
 		return 0;
 
 	SPD_FATAL("Internal error during communication.");
+}
+
+static char *get_param_str_and_advance(char **reply, int *err)
+{
+	char *tptr;
+	char *pos;
+	char *pos_begin;
+	char *pos_end;
+	char *rep;
+
+	assert(err != NULL);
+
+	pos = *reply;
+
+	if (strlen(pos) < 4)
+		return NULL;
+
+	*err = strtol(pos, &tptr, 10);
+	if (*err >= 300 && *err <= 399)
+		return NULL;
+
+	if ((*tptr != '-') || (tptr != pos + 3)) {
+		*err = -3;
+		return NULL;
+	}
+
+	pos_begin = pos + 4;
+	pos_end = strstr(pos_begin, "\r\n");
+	if (*pos_end == 0) {
+		*err = -4;
+		return NULL;
+	}
+
+	rep = (char *)strndup(pos_begin, pos_end - pos_begin);
+	*err = 0;
+
+	*reply = pos_end + 2;
+
+	return rep;
 }
 
 static char *get_param_str(char *reply, int num, int *err)
